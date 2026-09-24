@@ -20,14 +20,22 @@ public final class HandshakeResponse {
             plugin = "mysql_native_password";
         }
 
-        // 客户端能力 = 自己支持的 ∩ 服务端支持的
+        // 客户端能力 = 自己支持的 ∩ 服务端支持的（不强制声称服务端没有的能力）
         int clientFlags = CapabilityFlags.CLIENT_BASIC & handshake.capabilityFlags;
-        // 这几位必须由客户端主动声明
-        clientFlags |= CapabilityFlags.CLIENT_PROTOCOL_41;
-        clientFlags |= CapabilityFlags.CLIENT_SECURE_CONNECTION;
-        clientFlags |= CapabilityFlags.CLIENT_PLUGIN_AUTH;
-        clientFlags |= CapabilityFlags.CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA;
+
+        int required = CapabilityFlags.CLIENT_PROTOCOL_41
+                | CapabilityFlags.CLIENT_SECURE_CONNECTION
+                | CapabilityFlags.CLIENT_PLUGIN_AUTH;
+        if ((clientFlags & required) != required) {
+            throw new IllegalStateException(
+                    "服务端缺少必要能力标志，capabilityFlags=0x"
+                            + Integer.toHexString(handshake.capabilityFlags));
+        }
+
         if (database != null && !database.isEmpty()) {
+            if ((handshake.capabilityFlags & CapabilityFlags.CLIENT_CONNECT_WITH_DB) == 0) {
+                throw new IllegalStateException("服务端不支持 CONNECT_WITH_DB，无法指定 database");
+            }
             clientFlags |= CapabilityFlags.CLIENT_CONNECT_WITH_DB;
         } else {
             clientFlags &= ~CapabilityFlags.CLIENT_CONNECT_WITH_DB;
@@ -43,7 +51,7 @@ public final class HandshakeResponse {
         out.write(new byte[23], 0, 23);
 
         writeNullTerminated(out, username);
-        writeLengthEncodedString(out, authResponse);
+        writeAuthResponse(out, clientFlags, authResponse);
 
         if ((clientFlags & CapabilityFlags.CLIENT_CONNECT_WITH_DB) != 0) {
             writeNullTerminated(out, database);
@@ -51,6 +59,20 @@ public final class HandshakeResponse {
 
         writeNullTerminated(out, plugin);
         return out.toByteArray();
+    }
+
+    /**
+     * 按协商到的能力写 auth-response：
+     * - PLUGIN_AUTH_LENENC_CLIENT_DATA → length-encoded
+     * - 否则 SECURE_CONNECTION → 1 字节长度 + 数据
+     */
+    private static void writeAuthResponse(ByteArrayOutputStream out, int clientFlags, byte[] authResponse) {
+        if ((clientFlags & CapabilityFlags.CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA) != 0) {
+            writeLengthEncodedString(out, authResponse);
+        } else {
+            out.write(authResponse.length & 0xFF);
+            out.write(authResponse, 0, authResponse.length);
+        }
     }
 
     private static void writeUint32(ByteArrayOutputStream out, int value) {

@@ -46,7 +46,7 @@ public final class AuthResult {
     }
 
     public static AuthResult parse(byte[] payload) {
-        if (payload.length == 0) {
+        if (payload == null || payload.length == 0) {
             throw new IllegalArgumentException("空认证响应");
         }
         int header = payload[0] & 0xFF;
@@ -55,10 +55,16 @@ public final class AuthResult {
             return new AuthResult(Kind.OK, "OK", 0, null, null, null, null);
         }
         if (header == 0xFF) {
+            if (payload.length < 3) {
+                throw new IllegalArgumentException("ERR 包过短: length=" + payload.length);
+            }
             int errorCode = (payload[1] & 0xFF) | ((payload[2] & 0xFF) << 8);
             int pos = 3;
             String sqlState = null;
             if (pos < payload.length && payload[pos] == '#') {
+                if (pos + 6 > payload.length) {
+                    throw new IllegalArgumentException("ERR 包 sqlState 字段不完整");
+                }
                 sqlState = new String(payload, pos + 1, 5, StandardCharsets.US_ASCII);
                 pos += 6;
             }
@@ -68,10 +74,13 @@ public final class AuthResult {
         if (header == 0xFE) {
             // Auth Switch Request: 0xFE + plugin_name\0 + scramble\0
             int pos = 1;
-            int nameEnd = indexOfNull(payload, pos);
+            int nameEnd = requireNull(payload, pos, "AuthSwitch plugin_name");
             String plugin = new String(payload, pos, nameEnd - pos, StandardCharsets.US_ASCII);
             pos = nameEnd + 1;
-            int scrambleEnd = indexOfNull(payload, pos);
+            if (pos > payload.length) {
+                throw new IllegalArgumentException("AuthSwitch 缺少 scramble");
+            }
+            int scrambleEnd = requireNull(payload, pos, "AuthSwitch scramble");
             byte[] scramble = Arrays.copyOfRange(payload, pos, scrambleEnd);
             return new AuthResult(Kind.AUTH_SWITCH, null, 0, null, plugin, scramble, null);
         }
@@ -82,13 +91,17 @@ public final class AuthResult {
         throw new IllegalStateException("未知认证响应头: 0x" + Integer.toHexString(header));
     }
 
-    private static int indexOfNull(byte[] data, int from) {
+    /** 找不到 \\0 时直接报格式错误，避免静默用 length 当终点。 */
+    private static int requireNull(byte[] data, int from, String field) {
+        if (from > data.length) {
+            throw new IllegalArgumentException(field + " 起始位置越界: from=" + from);
+        }
         for (int i = from; i < data.length; i++) {
             if (data[i] == 0) {
                 return i;
             }
         }
-        return data.length;
+        throw new IllegalArgumentException(field + " 缺少 null 终止符");
     }
 
     @Override

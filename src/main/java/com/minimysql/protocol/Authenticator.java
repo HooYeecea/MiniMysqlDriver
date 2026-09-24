@@ -14,6 +14,9 @@ import javax.crypto.Cipher;
  */
 public final class Authenticator {
 
+    /** 防止畸形响应导致认证循环空转。 */
+    private static final int MAX_AUTH_ROUNDS = 8;
+
     private Authenticator() {
     }
 
@@ -25,10 +28,9 @@ public final class Authenticator {
         byte[] response = HandshakeResponse.build(handshake, username, password, database);
         io.writePacketPayload(response);
 
-        String plugin = handshake.authPluginName;
         byte[] scramble = handshake.authPluginData;
 
-        while (true) {
+        for (int round = 0; round < MAX_AUTH_ROUNDS; round++) {
             byte[] payload = io.readPacketPayload();
             AuthResult result = AuthResult.parse(payload);
 
@@ -39,9 +41,8 @@ public final class Authenticator {
                     throw new IOException("认证失败 [" + result.errorCode + "] "
                             + result.sqlState + " " + result.message);
                 case AUTH_SWITCH:
-                    plugin = result.switchPlugin;
                     scramble = result.switchScramble;
-                    byte[] switched = PasswordEncryption.scramble(plugin, password, scramble);
+                    byte[] switched = scramblePassword(result.switchPlugin, password, scramble);
                     io.writePacketPayload(switched);
                     break;
                 case AUTH_MORE_DATA:
@@ -51,11 +52,21 @@ public final class Authenticator {
                     throw new IllegalStateException("未处理的认证结果: " + result.kind);
             }
         }
+        throw new IOException("认证轮次超过上限 " + MAX_AUTH_ROUNDS + "，中止");
+    }
+
+    private static byte[] scramblePassword(String plugin, String password, byte[] scramble)
+            throws IOException {
+        try {
+            return PasswordEncryption.scramble(plugin, password, scramble);
+        } catch (IllegalArgumentException e) {
+            throw new IOException(e.getMessage(), e);
+        }
     }
 
     /**
      * caching_sha2_password 在非 SSL 下可能还要走「完整认证」：
-     *   0x03 = fast auth 成功，接着应收到 OK
+     *   0x03 = fast auth 成功，接着应收到 OK（由主循环继续读）
      *   0x04 = 需要完整认证 → 向服务器要 RSA 公钥 → 加密密码再发
      */
     private static void handleCachingSha2MoreData(PacketIO io,
@@ -115,6 +126,10 @@ public final class Authenticator {
      */
     private static byte[] rsaEncryptPassword(String password, byte[] scramble, PublicKey key)
             throws IOException {
+        if (scramble == null || scramble.length == 0) {
+            throw new IOException("RSA 加密需要非空 scramble");
+        }
+
         byte[] pass = (password == null ? "" : password).getBytes(StandardCharsets.UTF_8);
         byte[] plain = new byte[pass.length + 1];
         System.arraycopy(pass, 0, plain, 0, pass.length);

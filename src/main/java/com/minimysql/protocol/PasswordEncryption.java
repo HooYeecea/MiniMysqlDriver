@@ -74,6 +74,13 @@ public final class PasswordEncryption {
     }
 
     private static byte[] xor(byte[] a, byte[] b) {
+        if (a == null || b == null) {
+            throw new IllegalArgumentException("xor 参数不能为 null");
+        }
+        if (a.length != b.length) {
+            throw new IllegalArgumentException(
+                    "xor 两侧长度必须相同: a=" + a.length + ", b=" + b.length);
+        }
         byte[] out = new byte[a.length];
         for (int i = 0; i < a.length; i++) {
             out[i] = (byte) (a[i] ^ b[i]);
