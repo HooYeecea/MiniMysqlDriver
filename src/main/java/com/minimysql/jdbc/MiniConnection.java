@@ -171,7 +171,8 @@ public class MiniConnection implements Connection {
 
     @Override
     public PreparedStatement prepareStatement(String sql) throws SQLException {
-        throw ConnectionUrl.unsupported("prepareStatement");
+        checkOpen();
+        return new MiniPreparedStatement(this, sql);
     }
 
     @Override

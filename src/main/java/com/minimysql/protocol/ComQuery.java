@@ -23,9 +23,7 @@ public final class ComQuery {
     public static OkPacket executeUpdate(PacketIO io, String sql) throws IOException {
         byte[] response = sendQuery(io, sql);
         if (ErrPacket.isErr(response)) {
-            ErrPacket err = ErrPacket.parse(response);
-            throw new IOException("SQL 执行失败 [" + err.errorCode + "] "
-                    + err.sqlState + " " + err.message);
+            throw ErrPacket.parse(response).toException();
         }
         if (response.length > 0 && (response[0] & 0xFF) == 0x00) {
             return OkPacket.parse(response);

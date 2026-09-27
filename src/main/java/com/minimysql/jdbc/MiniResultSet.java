@@ -30,7 +30,7 @@ import java.util.Map;
  */
 public class MiniResultSet implements ResultSet {
 
-    private final MiniStatement statement;
+    private final Statement statement;
     private final QueryResult data;
     private final MiniResultSetMetaData metaData;
 
@@ -39,7 +39,7 @@ public class MiniResultSet implements ResultSet {
     private boolean closed;
     private boolean wasNull;
 
-    MiniResultSet(MiniStatement statement, QueryResult data) {
+    MiniResultSet(Statement statement, QueryResult data) {
         this.statement = statement;
         this.data = data;
         this.metaData = new MiniResultSetMetaData(data.columns);

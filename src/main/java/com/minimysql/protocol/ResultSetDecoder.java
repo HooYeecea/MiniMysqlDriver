@@ -21,9 +21,7 @@ public final class ResultSetDecoder {
 
     public static QueryResult decode(PacketIO io, byte[] firstPayload) throws IOException {
         if (ErrPacket.isErr(firstPayload)) {
-            ErrPacket err = ErrPacket.parse(firstPayload);
-            throw new IOException("SQL 执行失败 [" + err.errorCode + "] "
-                    + err.sqlState + " " + err.message);
+            throw ErrPacket.parse(firstPayload).toException();
         }
         if (firstPayload.length > 0 && (firstPayload[0] & 0xFF) == 0x00) {
             throw new IOException("收到 OK Packet，这不是结果集。请用 executeUpdate 执行无结果集 SQL。");
@@ -52,9 +50,7 @@ public final class ResultSetDecoder {
         byte[] rowPacket = maybeEof;
         while (!isResultSetTerminator(rowPacket)) {
             if (ErrPacket.isErr(rowPacket)) {
-                ErrPacket err = ErrPacket.parse(rowPacket);
-                throw new IOException("读取结果集失败 [" + err.errorCode + "] "
-                        + err.sqlState + " " + err.message);
+                throw ErrPacket.parse(rowPacket).toException();
             }
             rows.add(parseTextRow(rowPacket, columnCount));
             rowPacket = io.readPacketPayload();

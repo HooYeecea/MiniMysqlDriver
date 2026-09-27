@@ -48,6 +48,11 @@ public final class ErrPacket {
         return new ErrPacket(errorCode, sqlState, message);
     }
 
+    /** 转为协议异常，保留 errorCode / sqlState。 */
+    public MysqlProtocolException toException() {
+        return new MysqlProtocolException(this);
+    }
+
     @Override
     public String toString() {
         return "ErrPacket{errorCode=" + errorCode

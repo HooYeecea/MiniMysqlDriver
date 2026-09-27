@@ -38,8 +38,8 @@ public final class Authenticator {
                 case OK:
                     return;
                 case ERR:
-                    throw new IOException("认证失败 [" + result.errorCode + "] "
-                            + result.sqlState + " " + result.message);
+                    throw new MysqlProtocolException(
+                            result.errorCode, result.sqlState, result.message);
                 case AUTH_SWITCH:
                     scramble = result.switchScramble;
                     byte[] switched = scramblePassword(result.switchPlugin, password, scramble);
