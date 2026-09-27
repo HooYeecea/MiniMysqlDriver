@@ -49,6 +49,11 @@ public final class MysqlSession implements AutoCloseable {
         return ComQuery.executeUpdate(io, sql);
     }
 
+    /** 执行有结果集 SQL（如 SELECT）。 */
+    public QueryResult executeQuery(String sql) throws IOException {
+        return ComQuery.executeQuery(io, sql);
+    }
+
     @Override
     public void close() throws IOException {
         // COM_QUIT = 0x01，优雅断开；失败也无所谓，最终关 Socket

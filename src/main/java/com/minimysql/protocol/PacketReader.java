@@ -32,10 +32,25 @@ public final class PacketReader {
         return data[pos++] & 0xFF;
     }
 
+    public int peekUint8() {
+        require(1);
+        return data[pos] & 0xFF;
+    }
+
     public int readUint16() {
         require(2);
         int v = (data[pos] & 0xFF) | ((data[pos + 1] & 0xFF) << 8);
         pos += 2;
+        return v;
+    }
+
+    public long readUint32() {
+        require(4);
+        long v = (data[pos] & 0xFFL)
+                | ((data[pos + 1] & 0xFFL) << 8)
+                | ((data[pos + 2] & 0xFFL) << 16)
+                | ((data[pos + 3] & 0xFFL) << 24);
+        pos += 4;
         return v;
     }
 
@@ -83,6 +98,24 @@ public final class PacketReader {
         System.arraycopy(data, pos, out, 0, n);
         pos += n;
         return out;
+    }
+
+    public String readLengthEncodedString() {
+        return new String(readLengthEncodedBytes(), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * 文本协议字段：0xFB 表示 SQL NULL，否则为 length-encoded bytes。
+     */
+    public String readNullableLengthEncodedString() {
+        if (!hasRemaining()) {
+            throw new IllegalArgumentException("期望字段值，但数据已结束");
+        }
+        if (peekUint8() == 0xFB) {
+            pos++;
+            return null;
+        }
+        return readLengthEncodedString();
     }
 
     public String readRestAsString() {
