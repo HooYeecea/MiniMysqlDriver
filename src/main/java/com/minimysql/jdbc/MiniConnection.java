@@ -30,6 +30,8 @@ public class MiniConnection implements Connection {
 
     private final MysqlSession session;
     private boolean closed;
+    /** MySQL 默认开启自动提交。 */
+    private boolean autoCommit = true;
 
     private MiniConnection(MysqlSession session) {
         this.session = session;
@@ -59,6 +61,16 @@ public class MiniConnection implements Connection {
         }
     }
 
+    private void execSql(String sql) throws SQLException {
+        try {
+            session.executeUpdate(sql);
+        } catch (IOException e) {
+            throw JdbcExceptions.wrap(e);
+        } catch (RuntimeException e) {
+            throw JdbcExceptions.wrap(e);
+        }
+    }
+
     @Override
     public Statement createStatement() throws SQLException {
         checkOpen();
@@ -69,6 +81,14 @@ public class MiniConnection implements Connection {
     public void close() throws SQLException {
         if (closed) {
             return;
+        }
+        // 关闭前若仍在手动事务中，回滚未提交变更（常见驱动行为）
+        if (!autoCommit) {
+            try {
+                execSql("ROLLBACK");
+            } catch (SQLException ignored) {
+                // 关闭路径尽量继续关 Socket
+            }
         }
         closed = true;
         try {
@@ -93,26 +113,50 @@ public class MiniConnection implements Connection {
         return sql;
     }
 
+    /**
+     * 切换自动提交。
+     * false → SET autocommit=0（之后需显式 commit/rollback）
+     * true  → 先提交当前事务，再 SET autocommit=1（JDBC 约定）
+     */
     @Override
     public void setAutoCommit(boolean autoCommit) throws SQLException {
-        if (!autoCommit) {
-            throw ConnectionUrl.unsupported("setAutoCommit(false)");
+        checkOpen();
+        if (this.autoCommit == autoCommit) {
+            return;
         }
+        if (autoCommit) {
+            // 从手动事务切回自动提交：先提交
+            execSql("COMMIT");
+            execSql("SET autocommit=1");
+        } else {
+            execSql("SET autocommit=0");
+        }
+        this.autoCommit = autoCommit;
     }
 
     @Override
-    public boolean getAutoCommit() {
-        return true;
+    public boolean getAutoCommit() throws SQLException {
+        checkOpen();
+        return autoCommit;
     }
 
     @Override
     public void commit() throws SQLException {
-        throw ConnectionUrl.unsupported("commit");
+        checkOpen();
+        if (autoCommit) {
+            throw new SQLException("autoCommit=true 时不能调用 commit()");
+        }
+        execSql("COMMIT");
+        // MySQL 在 COMMIT 后仍保持 autocommit=0，新事务隐式开始
     }
 
     @Override
     public void rollback() throws SQLException {
-        throw ConnectionUrl.unsupported("rollback");
+        checkOpen();
+        if (autoCommit) {
+            throw new SQLException("autoCommit=true 时不能调用 rollback()");
+        }
+        execSql("ROLLBACK");
     }
 
     @Override
