@@ -16,7 +16,7 @@ public class Step1ReadHandshake {
 
     private static final String HOST = "127.0.0.1";
     private static final int PORT = 3306;
-
+    // 第一步测试
     public static void main(String[] args) throws Exception {
         System.out.println("正在连接 " + HOST + ":" + PORT + " ...");
 
