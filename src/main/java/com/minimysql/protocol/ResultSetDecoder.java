@@ -69,7 +69,7 @@ public final class ResultSetDecoder {
     }
 
     /** 旧版 EOF：首字节 0xFE，且 payload 很短（通常 5 字节）。 */
-    private static boolean isLegacyEof(byte[] payload) {
+    static boolean isLegacyEof(byte[] payload) {
         return payload.length > 0
                 && (payload[0] & 0xFF) == 0xFE
                 && payload.length < 9;
@@ -83,7 +83,7 @@ public final class ResultSetDecoder {
      * 迷你实现：行数据阶段凡首字节为 0xFE 即视为结束
      * （极端超长首字段可能误判，练习项目可忽略）。
      */
-    private static boolean isResultSetTerminator(byte[] payload) {
+    static boolean isResultSetTerminator(byte[] payload) {
         return payload.length > 0 && (payload[0] & 0xFF) == 0xFE;
     }
 }

@@ -13,15 +13,15 @@
 |------|------|
 | 连接 / 认证 | TCP + Handshake，支持 `mysql_native_password` / `caching_sha2_password` |
 | 执行 SQL | `COM_QUERY`：DDL / DML / `SELECT` |
+| 预编译 | `COM_STMT_PREPARE` / `EXECUTE` / `CLOSE` + 二进制行协议 |
 | JDBC API | `Driver` / `Connection` / `Statement` / `PreparedStatement` / `ResultSet` |
 | 错误映射 | ERR Packet → 带 `errorCode` / `SQLState` 的 `SQLException` |
 | 事务 | `setAutoCommit` / `commit` / `rollback` |
 
 ## 刻意简化的部分
 
-- `PreparedStatement`：客户端替换 `?` 后再发 `COM_QUERY`（不做服务器端 `COM_STMT_PREPARE`）
 - 大量 JDBC 方法直接抛 `SQLFeatureNotSupportedException`
-- 未实现：SSL、连接池、存储过程、二进制结果集协议、完整类型映射等
+- 未实现：SSL、连接池、存储过程、完整类型映射、大包分片等
 
 ## 架构
 
@@ -51,8 +51,9 @@
 | 4 | `com.minimysql.step4.Step4ExecuteQuery` | 解析 `SELECT` 结果集 |
 | 5 | `com.minimysql.step5.Step5JdbcApi` | 标准 JDBC：`DriverManager` |
 | 6 | `com.minimysql.step6.Step6SqlException` | ERR → `SQLException` |
-| 7 | `com.minimysql.step7.Step7PreparedStatement` | `PreparedStatement` |
+| 7 | `com.minimysql.step7.Step7PreparedStatement` | `PreparedStatement`（现已走服务器端预编译） |
 | 8 | `com.minimysql.step8.Step8Transaction` | 事务提交 / 回滚 |
+| 9 | `com.minimysql.step9.Step9ServerPreparedStatement` | `COM_STMT_*` + 二进制结果行 |
 
 ## 环境要求
 

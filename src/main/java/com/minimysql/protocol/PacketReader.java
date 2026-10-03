@@ -124,6 +124,39 @@ public final class PacketReader {
         return s;
     }
 
+    public byte[] readBytes(int n) {
+        require(n);
+        byte[] out = new byte[n];
+        System.arraycopy(data, pos, out, 0, n);
+        pos += n;
+        return out;
+    }
+
+    public int readInt16() {
+        return (short) readUint16();
+    }
+
+    public int readInt32() {
+        return (int) readUint32();
+    }
+
+    public long readInt64() {
+        require(8);
+        long v = 0;
+        for (int i = 0; i < 8; i++) {
+            v |= (data[pos++] & 0xFFL) << (8 * i);
+        }
+        return v;
+    }
+
+    public float readFloat() {
+        return Float.intBitsToFloat(readInt32());
+    }
+
+    public double readDouble() {
+        return Double.longBitsToDouble(readInt64());
+    }
+
     private void require(int n) {
         if (pos + n > data.length) {
             throw new IllegalArgumentException(

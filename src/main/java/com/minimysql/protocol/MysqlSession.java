@@ -54,6 +54,19 @@ public final class MysqlSession implements AutoCloseable {
         return ComQuery.executeQuery(io, sql);
     }
 
+    public PreparedStatementHandle prepare(String sql) throws IOException {
+        return ComStmt.prepare(io, sql);
+    }
+
+    public StmtExecuteResult executeStatement(PreparedStatementHandle handle, Object[] params)
+            throws IOException {
+        return ComStmt.execute(io, handle, params);
+    }
+
+    public void closeStatement(int statementId) throws IOException {
+        ComStmt.close(io, statementId);
+    }
+
     @Override
     public void close() throws IOException {
         // COM_QUIT = 0x01，优雅断开；失败也无所谓，最终关 Socket

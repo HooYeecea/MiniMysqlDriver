@@ -1,7 +1,8 @@
 package com.minimysql.jdbc;
 
 import com.minimysql.protocol.OkPacket;
-import com.minimysql.protocol.QueryResult;
+import com.minimysql.protocol.PreparedStatementHandle;
+import com.minimysql.protocol.StmtExecuteResult;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -29,7 +30,7 @@ import java.util.Arrays;
 import java.util.Calendar;
 
 /**
- * PreparedStatement 迷你实现：客户端替换 ?，再走 COM_QUERY。
+ * PreparedStatement：COM_STMT_PREPARE 后用二进制协议 COM_STMT_EXECUTE 传参。
  */
 public class MiniPreparedStatement implements PreparedStatement {
 
@@ -37,7 +38,7 @@ public class MiniPreparedStatement implements PreparedStatement {
     static final Object UNSET = new Object();
 
     private final MiniConnection connection;
-    private final String[] sqlParts;
+    private final PreparedStatementHandle handle;
     private final Object[] params;
 
     private boolean closed;
@@ -46,9 +47,20 @@ public class MiniPreparedStatement implements PreparedStatement {
 
     MiniPreparedStatement(MiniConnection connection, String sql) throws SQLException {
         this.connection = connection;
-        this.sqlParts = SqlInterpolator.splitByPlaceholders(sql);
-        this.params = new Object[sqlParts.length - 1];
+        try {
+            this.handle = connection.session().prepare(sql);
+        } catch (IOException e) {
+            throw JdbcExceptions.wrap(e);
+        } catch (RuntimeException e) {
+            throw JdbcExceptions.wrap(e);
+        }
+        this.params = new Object[handle.numParams];
         Arrays.fill(params, UNSET);
+    }
+
+    /** 服务器分配的 statement_id，便于对照协议。 */
+    public int getStatementId() {
+        return handle.statementId;
     }
 
     private void checkOpen() throws SQLException {
@@ -71,8 +83,23 @@ public class MiniPreparedStatement implements PreparedStatement {
         params[parameterIndex - 1] = value;
     }
 
-    private String renderSql() throws SQLException {
-        return SqlInterpolator.bind(sqlParts, params);
+    private void ensureAllParamsSet() throws SQLException {
+        for (int i = 0; i < params.length; i++) {
+            if (params[i] == UNSET) {
+                throw new SQLException("参数尚未设置: index=" + (i + 1));
+            }
+        }
+    }
+
+    private StmtExecuteResult executeOnServer() throws SQLException {
+        ensureAllParamsSet();
+        try {
+            return connection.session().executeStatement(handle, params);
+        } catch (IOException e) {
+            throw JdbcExceptions.wrap(e);
+        } catch (RuntimeException e) {
+            throw JdbcExceptions.wrap(e);
+        }
     }
 
     private void closeCurrentResultSet() throws SQLException {
@@ -86,50 +113,48 @@ public class MiniPreparedStatement implements PreparedStatement {
     public ResultSet executeQuery() throws SQLException {
         checkOpen();
         closeCurrentResultSet();
-        String sql = renderSql();
-        try {
-            QueryResult result = connection.session().executeQuery(sql);
-            currentResultSet = new MiniResultSet(this, result);
-            updateCount = -1;
-            return currentResultSet;
-        } catch (IOException e) {
-            throw JdbcExceptions.wrap(e);
-        } catch (RuntimeException e) {
-            throw JdbcExceptions.wrap(e);
+        StmtExecuteResult result = executeOnServer();
+        if (!result.isQuery()) {
+            throw new SQLException("该预编译语句没有结果集，请用 executeUpdate()");
         }
+        currentResultSet = new MiniResultSet(this, result.query);
+        updateCount = -1;
+        return currentResultSet;
     }
 
     @Override
     public int executeUpdate() throws SQLException {
         checkOpen();
         closeCurrentResultSet();
-        String sql = renderSql();
-        try {
-            OkPacket ok = connection.session().executeUpdate(sql);
-            long affected = ok.affectedRows;
-            if (affected > Integer.MAX_VALUE) {
-                throw new SQLException("affectedRows 超出 int 范围: " + affected);
-            }
-            updateCount = (int) affected;
-            return updateCount;
-        } catch (IOException e) {
-            throw JdbcExceptions.wrap(e);
-        } catch (RuntimeException e) {
-            throw JdbcExceptions.wrap(e);
+        StmtExecuteResult result = executeOnServer();
+        if (result.isQuery()) {
+            throw new SQLException("该预编译语句有结果集，请用 executeQuery()");
         }
+        OkPacket ok = result.ok;
+        long affected = ok.affectedRows;
+        if (affected > Integer.MAX_VALUE) {
+            throw new SQLException("affectedRows 超出 int 范围: " + affected);
+        }
+        updateCount = (int) affected;
+        return updateCount;
     }
 
     @Override
     public boolean execute() throws SQLException {
-        String sql = renderSql().trim();
-        if (sql.regionMatches(true, 0, "select", 0, 6)
-                || sql.regionMatches(true, 0, "show", 0, 4)
-                || sql.regionMatches(true, 0, "desc", 0, 4)
-                || sql.regionMatches(true, 0, "explain", 0, 7)) {
-            executeQuery();
+        checkOpen();
+        closeCurrentResultSet();
+        StmtExecuteResult result = executeOnServer();
+        if (result.isQuery()) {
+            currentResultSet = new MiniResultSet(this, result.query);
+            updateCount = -1;
             return true;
         }
-        executeUpdate();
+        OkPacket ok = result.ok;
+        long affected = ok.affectedRows;
+        if (affected > Integer.MAX_VALUE) {
+            throw new SQLException("affectedRows 超出 int 范围: " + affected);
+        }
+        updateCount = (int) affected;
         return false;
     }
 
@@ -414,6 +439,13 @@ public class MiniPreparedStatement implements PreparedStatement {
         }
         closed = true;
         closeCurrentResultSet();
+        try {
+            connection.session().closeStatement(handle.statementId);
+        } catch (SQLException e) {
+            // Connection 已关闭时不再强求 COM_STMT_CLOSE
+        } catch (IOException e) {
+            throw JdbcExceptions.wrap(e);
+        }
     }
 
     @Override
