@@ -2,6 +2,7 @@ package com.minimysql.jdbc;
 
 import com.minimysql.protocol.OkPacket;
 import com.minimysql.protocol.PreparedStatementHandle;
+import com.minimysql.protocol.QueryResult;
 import com.minimysql.protocol.StmtExecuteResult;
 
 import java.io.IOException;
@@ -40,13 +41,21 @@ public class MiniPreparedStatement implements PreparedStatement {
     private final MiniConnection connection;
     private final PreparedStatementHandle handle;
     private final Object[] params;
+    private final boolean returnGeneratedKeys;
 
     private boolean closed;
     private ResultSet currentResultSet;
     private int updateCount = -1;
+    private QueryResult generatedKeys = GeneratedKeys.empty();
 
     MiniPreparedStatement(MiniConnection connection, String sql) throws SQLException {
+        this(connection, sql, false);
+    }
+
+    MiniPreparedStatement(MiniConnection connection, String sql, boolean returnGeneratedKeys)
+            throws SQLException {
         this.connection = connection;
+        this.returnGeneratedKeys = returnGeneratedKeys;
         try {
             this.handle = connection.session().prepare(sql);
         } catch (IOException e) {
@@ -119,6 +128,7 @@ public class MiniPreparedStatement implements PreparedStatement {
         }
         currentResultSet = new MiniResultSet(this, result.query);
         updateCount = -1;
+        generatedKeys = GeneratedKeys.empty();
         return currentResultSet;
     }
 
@@ -130,13 +140,7 @@ public class MiniPreparedStatement implements PreparedStatement {
         if (result.isQuery()) {
             throw new SQLException("该预编译语句有结果集，请用 executeQuery()");
         }
-        OkPacket ok = result.ok;
-        long affected = ok.affectedRows;
-        if (affected > Integer.MAX_VALUE) {
-            throw new SQLException("affectedRows 超出 int 范围: " + affected);
-        }
-        updateCount = (int) affected;
-        return updateCount;
+        return applyOk(result.ok);
     }
 
     @Override
@@ -147,15 +151,21 @@ public class MiniPreparedStatement implements PreparedStatement {
         if (result.isQuery()) {
             currentResultSet = new MiniResultSet(this, result.query);
             updateCount = -1;
+            generatedKeys = GeneratedKeys.empty();
             return true;
         }
-        OkPacket ok = result.ok;
+        applyOk(result.ok);
+        return false;
+    }
+
+    private int applyOk(OkPacket ok) throws SQLException {
         long affected = ok.affectedRows;
         if (affected > Integer.MAX_VALUE) {
             throw new SQLException("affectedRows 超出 int 范围: " + affected);
         }
         updateCount = (int) affected;
-        return false;
+        generatedKeys = returnGeneratedKeys ? GeneratedKeys.fromOk(ok) : GeneratedKeys.empty();
+        return updateCount;
     }
 
     @Override
@@ -584,7 +594,8 @@ public class MiniPreparedStatement implements PreparedStatement {
 
     @Override
     public ResultSet getGeneratedKeys() throws SQLException {
-        throw ConnectionUrl.unsupported("getGeneratedKeys");
+        checkOpen();
+        return new MiniResultSet(this, generatedKeys);
     }
 
     @Override

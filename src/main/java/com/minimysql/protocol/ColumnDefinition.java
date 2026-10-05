@@ -69,6 +69,11 @@ public final class ColumnDefinition {
         );
     }
 
+    /** 合成列（如 JDBC GENERATED_KEY），不来自网络包。 */
+    public static ColumnDefinition synthetic(String name, int type, long columnLength) {
+        return new ColumnDefinition("def", "", "", "", name, name, 63, columnLength, type, 0, 0);
+    }
+
     @Override
     public String toString() {
         return name + "(" + typeName(type) + ")";

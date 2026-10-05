@@ -14,7 +14,7 @@
 | 连接 / 认证 | TCP + Handshake，支持 `mysql_native_password` / `caching_sha2_password` |
 | 执行 SQL | `COM_QUERY`：DDL / DML / `SELECT` |
 | 预编译 | `COM_STMT_PREPARE` / `EXECUTE` / `CLOSE` + 二进制行协议 |
-| JDBC API | `Driver` / `Connection` / `Statement` / `PreparedStatement` / `ResultSet` |
+| JDBC API | `Driver` / `Connection` / `Statement` / `PreparedStatement` / `ResultSet` / `getGeneratedKeys` |
 | 错误映射 | ERR Packet → 带 `errorCode` / `SQLState` 的 `SQLException` |
 | 事务 | `setAutoCommit` / `commit` / `rollback` |
 
@@ -54,6 +54,7 @@
 | 7 | `com.minimysql.step7.Step7PreparedStatement` | `PreparedStatement`（现已走服务器端预编译） |
 | 8 | `com.minimysql.step8.Step8Transaction` | 事务提交 / 回滚 |
 | 9 | `com.minimysql.step9.Step9ServerPreparedStatement` | `COM_STMT_*` + 二进制结果行 |
+| 10 | `com.minimysql.step10.Step10GeneratedKeys` | INSERT 后 `getGeneratedKeys()` |
 
 ## 环境要求
 
