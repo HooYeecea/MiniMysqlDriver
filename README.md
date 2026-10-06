@@ -17,11 +17,12 @@
 | JDBC API | `Driver` / `Connection` / `Statement` / `PreparedStatement` / `ResultSet` / `getGeneratedKeys` |
 | 错误映射 | ERR Packet → 带 `errorCode` / `SQLState` 的 `SQLException` |
 | 事务 | `setAutoCommit` / `commit` / `rollback` |
+| 大包 | 逻辑 payload 超过 16MB 时自动拆包 / 拼包 |
 
 ## 刻意简化的部分
 
 - 大量 JDBC 方法直接抛 `SQLFeatureNotSupportedException`
-- 未实现：SSL、连接池、存储过程、完整类型映射、大包分片等
+- 未实现：SSL、连接池、存储过程、完整类型映射等
 
 ## 架构
 
@@ -55,6 +56,7 @@
 | 8 | `com.minimysql.step8.Step8Transaction` | 事务提交 / 回滚 |
 | 9 | `com.minimysql.step9.Step9ServerPreparedStatement` | `COM_STMT_*` + 二进制结果行 |
 | 10 | `com.minimysql.step10.Step10GeneratedKeys` | INSERT 后 `getGeneratedKeys()` |
+| 11 | `com.minimysql.step11.Step11PacketFragmentation` | Packet 拆包 / 拼包（不必连库） |
 
 ## 环境要求
 
